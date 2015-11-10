@@ -20,7 +20,6 @@
 #include "bt_vendor_lib.h"
 //#include "vnd_buildcfg.h"
 
-
 #ifndef FALSE
 #define FALSE  0
 #endif
