@@ -1920,7 +1920,7 @@ check_paths:
         ALOGV("%s: rampatch_file_path is: %s", __FUNCTION__, rampatch_file_path);
 
         /* Check the two valid paths for the file */
-        snprintf(rome_nvm_path, NAME_MAX, "%s/%s", ROME_NV_FW_ALT_PATH, nvm_file_path);
+        snprintf(rome_nvm_path, NAME_MAX, "%s/%s", ROME_NV_FW_PATH, nvm_file_path);
         if (access(rome_nvm_path, R_OK) != 0) {
             snprintf(rome_nvm_path, NAME_MAX, "%s/%s", ROME_NV_FW_ALT_PATH, nvm_file_path);
             if (access(rome_nvm_path, R_OK) != 0) {
