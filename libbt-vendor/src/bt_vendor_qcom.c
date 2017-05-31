@@ -327,24 +327,24 @@ int start_hci_filter() {
        int i, init_success = -1;
        char value[PROPERTY_VALUE_MAX] = {'\0'};
 
-       property_get(BT_VND_FILTER_START, value, false);
-
-       if (strcmp(value, "true") == 0) {
-           ALOGI("%s: hci_filter has been started already", __func__);
-           //Filter should have been started OR in the process of initializing
-           //Make sure of hci_filter_status and return the state based on it
-       } else {
-           property_set("wc_transport.clean_up","0");
-           property_set("wc_transport.hci_filter_status", "0");
-           property_set(BT_VND_FILTER_START, "true");
-           ALOGV("%s: %s set to true ", __func__, BT_VND_FILTER_START );
-       }
-
-       /*If there are back to back ON requests from different clients,
-         All client should come and stuck in this while loop till FILTER
-         comesup and ready to accept the connections */
-       //sched_yield();
        for(i=0; i<45; i++) {
+          property_get(BT_VND_FILTER_START, value, false);
+
+          if (strcmp(value, "true") == 0) {
+              ALOGI("%s: hci_filter has been started already", __func__);
+              //Filter should have been started OR in the process of initializing
+              //Make sure of hci_filter_status and return the state based on it
+          } else {
+              property_set("wc_transport.clean_up","0");
+              property_set("wc_transport.hci_filter_status", "0");
+              property_set(BT_VND_FILTER_START, "true");
+              ALOGV("%s: %s set to true ", __func__, BT_VND_FILTER_START );
+          }
+
+          /*If there are back to back ON requests from different clients,
+            All client should come and stuck in this while loop till FILTER
+            comesup and ready to accept the connections */
+          //sched_yield();
           property_get("wc_transport.hci_filter_status", value, "0");
           if (strcmp(value, "1") == 0) {
                init_success = 1;
@@ -380,16 +380,18 @@ static int bt_powerup(int en )
 
     ALOGI("bt_powerup: %c", on);
 
-    /* Check if rfkill has been disabled */
-    ret = property_get("ro.rfkilldisabled", disable, "0");
-    if (!ret ){
-        ALOGE("Couldn't get ro.rfkilldisabled (%d)", ret);
-        return -1;
-    }
-    /* In case rfkill disabled, then no control power*/
-    if (strcmp(disable, "1") == 0) {
-        ALOGI("ro.rfkilldisabled : %s", disable);
-        return -1;
+    if (q.soc_type < BT_SOC_CHEROKEE) {
+       /* Check if rfkill has been disabled */
+       ret = property_get("ro.rfkilldisabled", disable, "0");
+       if (!ret ){
+          ALOGE("Couldn't get ro.rfkilldisabled (%d)", ret);
+          return -1;
+       }
+       /* In case rfkill disabled, then no control power*/
+       if (strcmp(disable, "1") == 0) {
+          ALOGI("ro.rfkilldisabled : %s", disable);
+          return -1;
+       }
     }
 
 #ifdef WIFI_BT_STATUS_SYNC
@@ -398,45 +400,47 @@ static int bt_powerup(int en )
     bt_wait_for_service_done();
 #endif
 
-    /* Assign rfkill_id and find bluetooth rfkill state path*/
-    for(i = 0; (q.rfkill_id == -1) && (q.rfkill_state == NULL); i++)
-    {
-        snprintf(rfkill_type, sizeof(rfkill_type), "/sys/class/rfkill/rfkill%d/type", i);
-        if ((fd = open(rfkill_type, O_RDONLY)) < 0)
+    if (q.soc_type < BT_SOC_CHEROKEE) {
+        /* Assign rfkill_id and find bluetooth rfkill state path*/
+        for(i = 0; (q.rfkill_id == -1) && (q.rfkill_state == NULL); i++)
         {
-            ALOGE("open(%s) failed: %s (%d)\n", rfkill_type, strerror(errno), errno);
+            snprintf(rfkill_type, sizeof(rfkill_type), "/sys/class/rfkill/rfkill%d/type", i);
+            if ((fd = open(rfkill_type, O_RDONLY)) < 0)
+            {
+                ALOGE("open(%s) failed: %s (%d)\n", rfkill_type, strerror(errno), errno);
 
 #ifdef WIFI_BT_STATUS_SYNC
-            bt_semaphore_release(lock_fd);
-            bt_semaphore_destroy(lock_fd);
+                bt_semaphore_release(lock_fd);
+                bt_semaphore_destroy(lock_fd);
 #endif
-            return -1;
-        }
+                return -1;
+            }
 
-        size = read(fd, &type, sizeof(type));
-        close(fd);
+            size = read(fd, &type, sizeof(type));
+            close(fd);
 
-        if ((size >= 9) && !memcmp(type, "bluetooth", 9))
-        {
-            asprintf(&q.rfkill_state, "/sys/class/rfkill/rfkill%d/state", q.rfkill_id = i);
-            break;
-        }
-    }
-
-    /* Get rfkill State to control */
-    if (q.rfkill_state != NULL)
-    {
-        if ((fd = open(q.rfkill_state, O_RDWR)) < 0)
-        {
-            ALOGE("open(%s) for write failed: %s (%d)", q.rfkill_state, strerror(errno), errno);
+            if ((size >= 9) && !memcmp(type, "bluetooth", 9))
+            {
+                asprintf(&q.rfkill_state, "/sys/class/rfkill/rfkill%d/state", q.rfkill_id = i);
+                break;
+            }
+       }
+       /* Get rfkill State to control */
+       if (q.rfkill_state != NULL)
+       {
+           if ((fd = open(q.rfkill_state, O_RDWR)) < 0)
+           {
+               ALOGE("open(%s) for write failed: %s (%d)", q.rfkill_state, strerror(errno), errno);
 #ifdef WIFI_BT_STATUS_SYNC
-            bt_semaphore_release(lock_fd);
-            bt_semaphore_destroy(lock_fd);
+               bt_semaphore_release(lock_fd);
+               bt_semaphore_destroy(lock_fd);
 #endif
 
-            return -1;
-        }
+               return -1;
+           }
+       }
     }
+
     if(can_perform_action(on) == false) {
         ALOGE("%s:can't perform action as it is being used by other clients", __func__);
 #ifdef WIFI_BT_STATUS_SYNC
@@ -453,21 +457,23 @@ static int bt_powerup(int en )
     }
     if ((fd_ldo = open(enable_ldo_path, O_RDWR)) < 0) {
         ALOGE("open(%s) failed: %s (%d)", enable_ldo_path, strerror(errno), errno);
-        return -1;
     }
-    size = read(fd_ldo, &enable_ldo, sizeof(enable_ldo));
-    close(fd_ldo);
-    if (size <= 0) {
-        ALOGE("read(%s) failed: %s (%d)", enable_ldo_path, strerror(errno), errno);
-        return -1;
-    }
-    if (!memcmp(enable_ldo, "true", 4)) {
-        ALOGI("External LDO has been configured");
-        ret = property_set("wc_transport.extldo", "enabled");
-        if (ret < 0) {
-            ALOGI("%s: Not able to set property wc_transport.extldo\n", __func__);
+    if(fd_ldo >= 0)
+    {
+        size = read(fd_ldo, &enable_ldo, sizeof(enable_ldo));
+        close(fd_ldo);
+        if (size <= 0) {
+            ALOGE("read(%s) failed: %s (%d)", enable_ldo_path, strerror(errno), errno);
+            return -1;
         }
-        q.enable_extldo = TRUE;
+        if (!memcmp(enable_ldo, "true", 4)) {
+            ALOGI("External LDO has been configured");
+            ret = property_set("wc_transport.extldo", "enabled");
+            if (ret < 0) {
+                ALOGI("%s: Not able to set property wc_transport.extldo\n", __func__);
+            }
+            q.enable_extldo = TRUE;
+        }
     }
 
     if(on == '0'){
@@ -733,10 +739,6 @@ static int op(bt_vendor_opcode_t opcode, void *param)
         case FM_VND_OP_POWER_CTRL:
             {
               is_fm_req = true;
-              if (is_soc_initialized()) {
-                  // add any FM specific actions  if needed in future
-                  break;
-              }
             }
 #endif
         case BT_VND_OP_POWER_CTRL:
